@@ -110,6 +110,24 @@ def show_bev_viewer(
                                        linewidth=2.5, color=col)
                     except Exception:
                         continue
+            elif k == "stop_line":
+                # stop_line은 빨간 점선으로 그리기
+                label_set = False
+                for item_uv in uv:
+                    if item_uv is None or len(item_uv) == 0:
+                        continue
+                    try:
+                        item_array = np.asarray(item_uv)
+                        if item_array.ndim == 2 and len(item_array) > 0:
+                            if not label_set:
+                                ax.plot(item_array[:, 0], item_array[:, 1], 
+                                       linewidth=3.0, color="red", linestyle="--", label=k)
+                                label_set = True
+                            else:
+                                ax.plot(item_array[:, 0], item_array[:, 1], 
+                                       linewidth=3.0, color="red", linestyle="--")
+                    except Exception:
+                        continue
             else:
                 # 다른 요소들도 리스트로 처리
                 for item_uv in uv:
@@ -139,6 +157,12 @@ def show_bev_viewer(
                 ax.plot(poly[:, 0], poly[:, 1], linewidth=2.5, color="lime", label="car_box(rect)")
             elif car_uv.ndim == 2:
                 ax.scatter(car_uv[:, 0], car_uv[:, 1], s=30, label="car_box")
+        elif k == "stop_line":
+            # stop_line은 빨간 점선으로 그리기
+            uv_array = np.asarray(uv)
+            if uv_array.ndim == 2 and len(uv_array) > 0:
+                ax.plot(uv_array[:, 0], uv_array[:, 1], 
+                       linewidth=3.0, color="red", linestyle="--", label=k)
         else:
             # 기타 요소들
             uv_array = np.asarray(uv)

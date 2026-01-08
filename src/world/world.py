@@ -83,6 +83,7 @@ def make_pangyo_world_pts(
         "lane_left":   List[np.ndarray],
         "lane_right":  List[np.ndarray],
         "car_box":     np.ndarray | None, # (8,3)
+        "stop_line":   List[np.ndarray],  # (K,3) 짧은 선분 polyline
       }
     """
 
@@ -140,6 +141,7 @@ def make_pangyo_world_pts(
     lane_center: List[np.ndarray] = []
     lane_left:   List[np.ndarray] = []
     lane_right:  List[np.ndarray] = []
+    stop_line:   List[np.ndarray] = []
 
     # ---------------------------------------
     # 1) 도로 기본 파라미터
@@ -229,7 +231,17 @@ def make_pangyo_world_pts(
         lane_right.append(_offset_boundary(c, np.array([-1.0, 0.0]), -lane_width/2))
 
     # ---------------------------------------
-    # 5) 선행차(예: 동쪽에서 서쪽으로 가는 차 1대)
+    # 5) 정지선 (stop line)
+    # ---------------------------------------
+    # y=0에서 y=-7까지의 세로선 (x 좌표는 적절한 위치에 설정)
+    stop_x = 0.0  # x 좌표 (필요시 조정 가능)
+    stop_line.append(np.array([
+        [stop_x, 0.0, z0],
+        [stop_x, -7.0, z0]
+    ]))
+
+    # ---------------------------------------
+    # 6) 선행차(예: 동쪽에서 서쪽으로 가는 차 1대)
     # ---------------------------------------
     # 교차로 중심 근처에 배치하여 테스트하기 쉽게
     L, W, H = 4.5, 1.6, 1.5
@@ -248,4 +260,5 @@ def make_pangyo_world_pts(
         "lane_left": lane_left,
         "lane_right": lane_right,
         "car_box": car_box,
+        "stop_line": stop_line,
     }
