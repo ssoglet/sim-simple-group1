@@ -1,5 +1,9 @@
 import numpy as np
+from typing import TYPE_CHECKING
 from src.common.math_utils import rot_z, rot_x, rot_y, euler_zyx
+
+if TYPE_CHECKING:
+    from src.dynamics.vehicle import VehicleState
 
 def make_T_cam_world():
     """
@@ -22,7 +26,7 @@ def make_T_cam_world():
     ], dtype=float)
 
     # Optional: pitch down
-    pitch = np.deg2rad(-10.0)
+    pitch = np.deg2rad(-5.0)
     R_pitch = rot_z(pitch)
     # yaw = np.deg2rad(20)
     # roll = np.deg2rad(5)

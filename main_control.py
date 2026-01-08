@@ -161,11 +161,11 @@ def main():
         state = VehicleState(x=-400.0, y=0.0, yaw=np.deg2rad(0.0), v=0.0)
     elif map_type == "pangyo":
         # 교차로 중심(0,0) 근처에서 시작: 서쪽으로 25m 앞, 오른쪽 차선
-        state = VehicleState(x=-25.0, y=-1.75, yaw=np.deg2rad(0.0), v=0.0)
+        state = VehicleState(x=-30.0, y=-1.75, yaw=np.deg2rad(0.0), v=0.0)
     else:
         state = VehicleState(x=0.0, y=-1.0, yaw=np.deg2rad(0.0), v=0.0)
     
-    v_ref = 10.0  # m/s
+    v_ref = 9.0 
 
     # --- Simulation loop ---
     dt = 0.05
@@ -256,6 +256,14 @@ def main():
                     lane_max_y - vehicle_width_half
                 )
         
+        # --- 신호등 상태 확인 (차량 제어 전에) ---
+        frame_in_cycle = k % 200
+        if frame_in_cycle < 120:
+            tl_state = TrafficLightState.RED
+        else:
+            tl_state = TrafficLightState.GREEN
+        traffic_light_states_log.append({"tl_front": tl_state})
+        
         # --- Control: 조향 및 속도 제어 ---
         idx_near, _, _ = nearest_point_on_path(ref_path, state.x, state.y)
         e_lat = signed_lateral_error(state, ref_path, idx_near)
@@ -263,8 +271,37 @@ def main():
         
         delta, dbg = pure_pursuit_steer(state, ref_path, vparams, cparams)
         
+        # --- 신호등에 따른 속도 제어 ---
+        stop_line_x = -5.0
+        stop_distance = 8.0 
+        stop_point_x = stop_line_x - stop_distance  
+        
+        # 빨간불일 때
+        should_stop = False
+        if tl_state == TrafficLightState.RED:
+            if state.x < stop_point_x:
+                # 계속 주행
+                v_ref_traffic = v_ref
+                should_stop = False
+            elif state.x < stop_line_x:
+                # 멈춤
+                v_ref_traffic = 0.0
+                should_stop = True
+            else:
+                v_ref_traffic = 0.0
+                should_stop = True
+        else:  # GREEN
+            # 초록불이면 항상 정상 주행
+            v_ref_traffic = v_ref
+            should_stop = False
+        
         # 기본 속도 제어
-        a_base = speed_control(state.v, v_ref, vparams, cparams)
+        if should_stop:
+            # 정지선 앞에서 강제로 강한 제동 적용
+            # 현재 속도에 비례하여 강한 제동 (최대 제동력 사용)
+            a_base = max(vparams.min_accel, -abs(state.v) * 5.0)  # 강한 제동
+        else:
+            a_base = speed_control(state.v, v_ref_traffic, vparams, cparams)
         
         # --- AEB: 자동 긴급 제동 적용 ---
         a, aeb_debug = aeb_module.compute_safe_acceleration(state, obstacles, a_base)
@@ -273,17 +310,13 @@ def main():
 
         # --- Vehicle update ---
         state = step_kinematic_bicycle(state, delta, a, dt, vparams)
+        
+        # 정지선 앞에서 완전히 멈추도록 보정
+        if should_stop and state.v < 0.1:  # 속도가 거의 0이면 완전히 멈춤
+            state = VehicleState(x=state.x, y=state.y, yaw=state.yaw, v=0.0)
+        
         states.append(state)
         traj.append((state.x, state.y))
-        
-
-        frame_in_cycle = k % 200
-        if frame_in_cycle < 160:
-            tl_state = TrafficLightState.RED
-        else:
-            tl_state = TrafficLightState.GREEN
-        
-        traffic_light_states_log.append({"tl_front": tl_state})
     
     # 디버깅 정보 출력
     print(f"\n=== 시뮬레이션 완료 ===")

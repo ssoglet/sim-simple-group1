@@ -234,7 +234,7 @@ def make_pangyo_world_pts(
     # 5) 정지선 (stop line)
     # ---------------------------------------
     # y=0에서 y=-7까지의 세로선 (x 좌표는 적절한 위치에 설정)
-    stop_x = 0.0  # x 좌표 (필요시 조정 가능)
+    stop_x = -5.0  # x 좌표 (필요시 조정 가능)
     stop_line.append(np.array([
         [stop_x, 0.0, z0],
         [stop_x, -7.0, z0]
