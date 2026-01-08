@@ -75,3 +75,6 @@ class Planner:
                 angle_start=0.0,
                 angle_end=np.pi/2
             )
+def make_detour_path(obj_result:np.ndarray):
+    # obj_result input [0] = ...
+    pass

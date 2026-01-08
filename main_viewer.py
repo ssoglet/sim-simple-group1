@@ -86,23 +86,64 @@ def show_bev_viewer(
 
     # --- draw static map (lanes as solid lines, car_box as rectangle) ---
     for k, uv in bev_dict.items():
-        if k in ("lane_left", "lane_center", "lane_right"):
-            # solid line
+        if uv is None:
+            continue
+            
+        # OSM 맵의 경우 리스트 형태일 수 있음
+        if isinstance(uv, list):
+            # 리스트의 각 polyline을 그리기
+            if k in ("lane_left", "lane_center", "lane_right"):
+                col = LANE_COLORS.get(k, "gray")
+                label_set = False
+                for polyline_uv in uv:
+                    if polyline_uv is None or len(polyline_uv) == 0:
+                        continue
+                    try:
+                        polyline_array = np.asarray(polyline_uv)
+                        if polyline_array.ndim == 2 and len(polyline_array) > 0:
+                            if not label_set:
+                                ax.plot(polyline_array[:, 0], polyline_array[:, 1], 
+                                       linewidth=2.5, label=k, color=col)
+                                label_set = True
+                            else:
+                                ax.plot(polyline_array[:, 0], polyline_array[:, 1], 
+                                       linewidth=2.5, color=col)
+                    except Exception:
+                        continue
+            else:
+                # 다른 요소들도 리스트로 처리
+                for item_uv in uv:
+                    if item_uv is None or len(item_uv) == 0:
+                        continue
+                    try:
+                        item_array = np.asarray(item_uv)
+                        if item_array.ndim == 2 and len(item_array) > 0:
+                            ax.scatter(item_array[:, 0], item_array[:, 1], s=3, label=k)
+                            break  # 한 번만 라벨 표시
+                    except Exception:
+                        continue
+        elif k in ("lane_left", "lane_center", "lane_right"):
+            # solid line (단일 배열)
             col = LANE_COLORS.get(k, "gray")
-            ax.plot(uv[:, 0], uv[:, 1], linewidth=2.5, label=k, color=col)
+            uv_array = np.asarray(uv)
+            if uv_array.ndim == 2 and len(uv_array) > 0:
+                ax.plot(uv_array[:, 0], uv_array[:, 1], linewidth=2.5, label=k, color=col)
         elif k == "car_box":
             # car_box points are corners of ONE car (not 4 cars)
             # If 8 points exist (bottom+top), take bottom 4 (first 4 in our demo generation)
-            car_uv = uv
-            if car_uv.shape[0] >= 4:
+            car_uv = np.asarray(uv)
+            if car_uv.ndim == 2 and car_uv.shape[0] >= 4:
                 bottom4 = car_uv[:4].copy()  # assumes first 4 are dz=0
                 bottom4 = _order_polygon_ccw(bottom4)
                 poly = np.vstack([bottom4, bottom4[0]])  # close loop
                 ax.plot(poly[:, 0], poly[:, 1], linewidth=2.5, color="lime", label="car_box(rect)")
-            else:
+            elif car_uv.ndim == 2:
                 ax.scatter(car_uv[:, 0], car_uv[:, 1], s=30, label="car_box")
         else:
-            ax.scatter(uv[:, 0], uv[:, 1], s=3, label=k)
+            # 기타 요소들
+            uv_array = np.asarray(uv)
+            if uv_array.ndim == 2 and len(uv_array) > 0:
+                ax.scatter(uv_array[:, 0], uv_array[:, 1], s=3, label=k)
 
     
     # # draw static map points (once)
@@ -186,12 +227,44 @@ def show_bev_viewer(
         T_cam_world = make_T_cam_world() @ make_T_vehicle_world(s)
 
         for name, pts3 in world_pts.items():
-            uv, _ = project_pinhole(pts3, T_cam_world, K)
-            if uv.shape[0] == 0:
+            if pts3 is None:
                 continue
-            col = CAM_COLORS.get(name, "gray")
-            sc = ax_cam.scatter(uv[:, 0], uv[:, 1], s=6, color=col, label=name)
-            cam_artists.append(sc)
+                
+            # OSM 맵의 경우 리스트 형태일 수 있음
+            if isinstance(pts3, list):
+                # 리스트의 각 polyline을 개별적으로 처리
+                label_set = False
+                for polyline in pts3:
+                    if polyline is None or len(polyline) == 0:
+                        continue
+                    try:
+                        polyline_array = np.asarray(polyline)
+                        if polyline_array.ndim == 2 and len(polyline_array) > 0:
+                            uv, _ = project_pinhole(polyline_array, T_cam_world, K)
+                            if uv.shape[0] == 0:
+                                continue
+                            col = CAM_COLORS.get(name, "gray")
+                            if not label_set:
+                                sc = ax_cam.scatter(uv[:, 0], uv[:, 1], s=6, color=col, label=name)
+                                label_set = True
+                            else:
+                                sc = ax_cam.scatter(uv[:, 0], uv[:, 1], s=6, color=col)
+                            cam_artists.append(sc)
+                    except Exception:
+                        continue
+            else:
+                # 단일 numpy array 형태
+                try:
+                    pts3_array = np.asarray(pts3)
+                    if pts3_array.ndim == 2 and len(pts3_array) > 0:
+                        uv, _ = project_pinhole(pts3_array, T_cam_world, K)
+                        if uv.shape[0] == 0:
+                            continue
+                        col = CAM_COLORS.get(name, "gray")
+                        sc = ax_cam.scatter(uv[:, 0], uv[:, 1], s=6, color=col, label=name)
+                        cam_artists.append(sc)
+                except Exception:
+                    continue
 
         # legend 중복 방지: 매 프레임 새로 갱신
         if len(cam_artists) > 0:

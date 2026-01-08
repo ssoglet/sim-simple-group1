@@ -1,5 +1,5 @@
 import numpy as np
-from src.common.math_utils import rot_z
+from src.common.math_utils import rot_z, rot_x, rot_y, euler_zyx
 
 def make_T_cam_world():
     """
@@ -24,7 +24,9 @@ def make_T_cam_world():
     # Optional: pitch down
     pitch = np.deg2rad(-10.0)
     R_pitch = rot_z(pitch)
-
+    # yaw = np.deg2rad(20)
+    # roll = np.deg2rad(5)
+    # R_euler = euler_zyx(yaw,pitch,roll)
     R = R_pitch @ R_world_cam
 
     T = np.eye(4)
