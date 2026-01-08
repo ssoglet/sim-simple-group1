@@ -1,6 +1,13 @@
 
 from dataclasses import dataclass
+from enum import Enum
 import numpy as np
+
+class TrafficLightState(Enum):
+    """신호등 상태"""
+    RED = "red"
+    YELLOW = "yellow"
+    GREEN = "green"
 
 @dataclass(frozen=True)
 class CameraIntrinsics:

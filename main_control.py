@@ -8,6 +8,7 @@ from src.sensors.bev import world_xy_to_bev, clip_bev
 # from map
 from src.world.world import make_demo_world_points, make_pangyo_world_pts
 from src.world.osm_converter import make_osm_world_pts
+from src.common.types import TrafficLightState
 
 # from kinetic bicycle model
 from src.dynamics.vehicle import VehicleState, VehicleParams, step_kinematic_bicycle
@@ -177,6 +178,9 @@ def main():
     aeb_activations = []
     path_replan_count = 0
     collision_warnings = []
+    
+    # 신호등 상태 로그 (각 프레임별)
+    traffic_light_states_log = []
 
     for k in range(steps):
         # --- Perception: 장애물 감지 ---
@@ -271,6 +275,15 @@ def main():
         state = step_kinematic_bicycle(state, delta, a, dt, vparams)
         states.append(state)
         traj.append((state.x, state.y))
+        
+
+        frame_in_cycle = k % 200
+        if frame_in_cycle < 160:
+            tl_state = TrafficLightState.RED
+        else:
+            tl_state = TrafficLightState.GREEN
+        
+        traffic_light_states_log.append({"tl_front": tl_state})
     
     # 디버깅 정보 출력
     print(f"\n=== 시뮬레이션 완료 ===")
@@ -301,6 +314,7 @@ def main():
         states=states,
         traj_xy_list=traj,
         world_pts=world_pts,
+        traffic_light_states_log=traffic_light_states_log,
         title="Dynamics & Control BEV Viewer"
     )
 if __name__ == "__main__":

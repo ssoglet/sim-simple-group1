@@ -7,7 +7,7 @@ from matplotlib.widgets import Button
 # from camera
 from src.sensors.camera_pinhole import project_pinhole
 from src.sensors.camera_extrinsic import make_T_cam_world
-from src.common.types import CameraIntrinsics
+from src.common.types import CameraIntrinsics, TrafficLightState
 
 # from kinetic bicycle model
 from src.dynamics.vehicle import VehicleState, VehicleParams, step_kinematic_bicycle
@@ -47,6 +47,7 @@ def show_bev_viewer(
     traj_xy_list,    # list of (x,y) tuples, same length as states
     world_pts,
     title="Day2 Viewer",
+    traffic_light_states_log=None,  # List[Dict[str, TrafficLightState]] - 각 프레임별 신호등 상태
 ):
     
     # --- helpers ---
@@ -188,6 +189,24 @@ def show_bev_viewer(
     ego_pt = ax.scatter([], [], s=90, marker="+")
     heading_line, = ax.plot([], [], linewidth=2)
     ax.legend(loc="upper right")
+    
+    # 신호등 표시용 (동적 업데이트)
+    traffic_light_artists = {"circle": None, "text": None}
+    traffic_light_cam_artists = {"circle": None, "text": None}
+    
+    # 초기 차량 위치 기준으로 신호등 위치 고정 계산
+    # 정지선이 x=0에 있으므로, 신호등을 정지선보다 오른쪽(x > 0)에 배치
+    initial_state = states[0] if states else None
+    if initial_state is not None:
+        # 정지선보다 오른쪽에 배치 (x > 0)
+        # 정지선이 x=0이므로, 신호등을 x=5.0 정도에 배치
+        fixed_tl_x = 5.0  # 정지선(x=0)보다 오른쪽
+        fixed_tl_y = -7.5  # y 좌표 고정
+        fixed_tl_z = 5.0  # 높이
+    else:
+        fixed_tl_x = 5.0
+        fixed_tl_y = -7.5
+        fixed_tl_z = 5.0
 
     # cam panel
     ax_cam = fig.add_axes([0.62, 0.14, 0.36, 0.82])
@@ -240,7 +259,54 @@ def show_bev_viewer(
         hy = s.y + Lh * np.sin(s.yaw)
         hu, hv = _meter_to_bev_pixel(hx, hy, xlim, ylim, bev_size)
         heading_line.set_data([eu, hu], [ev, hv])
+        
+        # --- 차량 정면 위 신호등 표시 (고정 위치) ---
+        # 기존 신호등 제거
+        if traffic_light_artists["circle"] is not None:
+            traffic_light_artists["circle"].remove()
+        if traffic_light_artists["text"] is not None:
+            traffic_light_artists["text"].remove()
+        
+        # 초기 차량 위치 기준으로 계산된 고정 신호등 위치 사용
+        # BEV 좌표로 변환 (z는 무시하고 x, y만 사용)
+        tl_u, tl_v = _meter_to_bev_pixel(fixed_tl_x, fixed_tl_y, xlim, ylim, bev_size)
+        
+        # 신호등 상태 가져오기
+        if traffic_light_states_log and i < len(traffic_light_states_log):
+            current_state = traffic_light_states_log[i].get("tl_front", TrafficLightState.RED)
+        else:
+            current_state = TrafficLightState.RED
+        
+        # 상태에 따른 색상 (RED와 GREEN만 사용)
+        if current_state == TrafficLightState.RED:
+            color = "red"
+        else:  # GREEN
+            color = "green"
+        
+        # 신호등을 원으로 표시
+        traffic_light_artists["circle"] = plt.Circle((tl_u, tl_v), 5, color=color, 
+                                                      edgecolor="black", linewidth=2, zorder=10)
+        ax.add_patch(traffic_light_artists["circle"])
+        
+        # 신호등 상태 텍스트 표시 (원 아래)
+        traffic_light_artists["text"] = ax.text(tl_u, tl_v + 15, current_state.value.upper(), 
+                                                fontsize=10, ha="center", va="top", 
+                                                color=color, weight="bold")
 
+        # --- 카메라 뷰에 신호등 제거 (먼저 제거) ---
+        if traffic_light_cam_artists["circle"] is not None:
+            try:
+                traffic_light_cam_artists["circle"].remove()
+            except (ValueError, AttributeError):
+                pass
+            traffic_light_cam_artists["circle"] = None
+        if traffic_light_cam_artists["text"] is not None:
+            try:
+                traffic_light_cam_artists["text"].remove()
+            except (ValueError, AttributeError):
+                pass
+            traffic_light_cam_artists["text"] = None
+        
         for a in cam_artists:
             try:
                 a.remove()
@@ -249,6 +315,37 @@ def show_bev_viewer(
         cam_artists.clear()
 
         T_cam_world = make_T_cam_world() @ make_T_vehicle_world(s)
+        
+        # 신호등 3D 위치를 카메라로 프로젝션
+        tl_3d = np.array([[fixed_tl_x, fixed_tl_y, fixed_tl_z]], dtype=float)
+        tl_uv, visible = project_pinhole(tl_3d, T_cam_world, K)
+        
+        if visible and tl_uv.shape[0] > 0:
+            tl_cam_u, tl_cam_v = tl_uv[0, 0], tl_uv[0, 1]
+            
+            # 카메라 뷰 범위 내에 있는지 확인
+            if 0 <= tl_cam_u < K.width and 0 <= tl_cam_v < K.height:
+                # 상태에 따른 색상 (RED와 GREEN만 사용)
+                if current_state == TrafficLightState.RED:
+                    cam_color = "red"
+                else:  # GREEN
+                    cam_color = "green"
+                
+                # 카메라 뷰에 신호등 원 표시
+                traffic_light_cam_artists["circle"] = plt.Circle((tl_cam_u, tl_cam_v), 8, 
+                                                                 color=cam_color, 
+                                                                 edgecolor="black", 
+                                                                 linewidth=2, 
+                                                                 zorder=10)
+                ax_cam.add_patch(traffic_light_cam_artists["circle"])
+                cam_artists.append(traffic_light_cam_artists["circle"])
+                
+                # 카메라 뷰에 신호등 텍스트 표시
+                traffic_light_cam_artists["text"] = ax_cam.text(tl_cam_u, tl_cam_v + 12, 
+                                                                current_state.value.upper(), 
+                                                                fontsize=8, ha="center", va="top", 
+                                                                color=cam_color, weight="bold")
+                cam_artists.append(traffic_light_cam_artists["text"])
 
         for name, pts3 in world_pts.items():
             if pts3 is None:
