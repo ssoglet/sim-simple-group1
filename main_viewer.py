@@ -57,13 +57,10 @@ def show_bev_viewer(
         ang = np.arctan2(pts_uv[:,1] - c[1], pts_uv[:,0] - c[0])
         return pts_uv[np.argsort(ang)]
 
-    LANE_COLORS = {
-        "lane_left": "gold",
-        "lane_center": "black",
-        "lane_right": "deepskyblue",
-    }    
-    
     W, H = bev_size
+    
+    # 중앙선 기준 위치 계산 (y=0)
+    _, center_v = _meter_to_bev_pixel(0.0, 0.0, xlim, ylim, bev_size)
 
     fig = plt.figure(figsize=(16, 8), dpi=80)
 
@@ -85,6 +82,29 @@ def show_bev_viewer(
     ax.grid(True)
 
 
+    # --- 중앙선 후보 찾기: 전체 lane 중에서 center_v에 가장 가까운 polyline 하나 선택 ---
+    central_key = None
+    central_index = None
+    best_dist = None
+    for k_tmp, uv_tmp in bev_dict.items():
+        if k_tmp not in ("lane_left", "lane_center", "lane_right"):
+            continue
+        if uv_tmp is None:
+            continue
+        items_tmp = uv_tmp if isinstance(uv_tmp, list) else [uv_tmp]
+        for idx_poly, poly_uv in enumerate(items_tmp):
+            if poly_uv is None or len(poly_uv) == 0:
+                continue
+            arr = np.asarray(poly_uv)
+            if arr.ndim != 2 or len(arr) == 0:
+                continue
+            v_mean = arr[:, 1].mean()
+            dist = abs(v_mean - center_v)
+            if best_dist is None or dist < best_dist:
+                best_dist = dist
+                central_key = k_tmp
+                central_index = idx_poly
+
     # --- draw static map (lanes as solid lines, car_box as rectangle) ---
     for k, uv in bev_dict.items():
         if uv is None:
@@ -94,21 +114,51 @@ def show_bev_viewer(
         if isinstance(uv, list):
             # 리스트의 각 polyline을 그리기
             if k in ("lane_left", "lane_center", "lane_right"):
-                col = LANE_COLORS.get(k, "gray")
                 label_set = False
-                for polyline_uv in uv:
+
+                for poly_idx, polyline_uv in enumerate(uv):
                     if polyline_uv is None or len(polyline_uv) == 0:
                         continue
                     try:
                         polyline_array = np.asarray(polyline_uv)
                         if polyline_array.ndim == 2 and len(polyline_array) > 0:
-                            if not label_set:
-                                ax.plot(polyline_array[:, 0], polyline_array[:, 1], 
-                                       linewidth=2.5, label=k, color=col)
-                                label_set = True
+                            v_mean = polyline_array[:, 1].mean()
+                            
+                            # 이 polyline이 '가장 가운데' 중앙선인지 여부
+                            is_central = (k == central_key and poly_idx == central_index)
+                            
+                            # 색상 결정: 중앙선은 검정, 그 위는 노란색, 아래는 하늘색
+                            if is_central:
+                                col = "black"
+                                label_name = "lane_center"
+                            elif v_mean < center_v:
+                                # 중앙선 위쪽 (화면 상단)
+                                col = "gold"
+                                label_name = "lane_left"
                             else:
-                                ax.plot(polyline_array[:, 0], polyline_array[:, 1], 
-                                       linewidth=2.5, color=col)
+                                # 중앙선 아래쪽 (화면 하단)
+                                col = "deepskyblue"
+                                label_name = "lane_right"
+                            
+                            # 범례 등록
+                            if is_central:
+                                # 중앙선은 검정색인 경우에만 범례 등록
+                                if not label_set:
+                                    ax.plot(polyline_array[:, 0], polyline_array[:, 1], 
+                                           linewidth=2.5, label=label_name, color=col)
+                                    label_set = True
+                                else:
+                                    ax.plot(polyline_array[:, 0], polyline_array[:, 1], 
+                                           linewidth=2.5, color=col)
+                            else:
+                                # lane_left, lane_right는 각각 한 번만 범례 등록
+                                if not label_set:
+                                    ax.plot(polyline_array[:, 0], polyline_array[:, 1], 
+                                           linewidth=2.5, label=label_name, color=col)
+                                    label_set = True
+                                else:
+                                    ax.plot(polyline_array[:, 0], polyline_array[:, 1], 
+                                           linewidth=2.5, color=col)
                     except Exception:
                         continue
             elif k == "stop_line":
@@ -143,10 +193,27 @@ def show_bev_viewer(
                         continue
         elif k in ("lane_left", "lane_center", "lane_right"):
             # solid line (단일 배열)
-            col = LANE_COLORS.get(k, "gray")
             uv_array = np.asarray(uv)
             if uv_array.ndim == 2 and len(uv_array) > 0:
-                ax.plot(uv_array[:, 0], uv_array[:, 1], linewidth=2.5, label=k, color=col)
+                v_mean = uv_array[:, 1].mean()
+                
+                # 이 polyline이 '가장 가운데' 중앙선인지 여부
+                is_central = (k == central_key and 0 == central_index)
+                
+                # 색상 결정: 중앙선은 검정, 그 위는 노란색, 아래는 하늘색
+                if is_central:
+                    col = "black"
+                    label_name = "lane_center"
+                elif v_mean < center_v:
+                    # 중앙선 위쪽 (화면 상단)
+                    col = "gold"
+                    label_name = "lane_left"
+                else:
+                    # 중앙선 아래쪽 (화면 하단)
+                    col = "deepskyblue"
+                    label_name = "lane_right"
+                
+                ax.plot(uv_array[:, 0], uv_array[:, 1], linewidth=2.5, label=label_name, color=col)
         elif k == "car_box":
             # car_box points are corners of ONE car (not 4 cars)
             # If 8 points exist (bottom+top), take bottom 4 (first 4 in our demo generation)
@@ -222,13 +289,6 @@ def show_bev_viewer(
     ax_cam.set_xlabel("u [px]")
     ax_cam.set_ylabel("v [px]")
     ax_cam.grid(True)
-
-    CAM_COLORS = {
-        "lane_left": "gold",
-        "lane_center": "black",
-        "lane_right": "deepskyblue",
-        "car_box": "lime",
-    }
 
     cam_artists = []  # frame마다 지우고 다시 그림
     tl_cam_artists = []  # 신호등 전용 카메라 아티스트
@@ -333,6 +393,29 @@ def show_bev_viewer(
                                       color=cam_color, weight="bold")
                 cam_artists.append(text_tl)
 
+        # 카메라 뷰에서도 중앙선 찾기 (y=0에 가장 가까운 것)
+        central_cam_key = None
+        central_cam_index = None
+        best_cam_dist = None
+        for name_tmp, pts3_tmp in world_pts.items():
+            if name_tmp not in ("lane_left", "lane_center", "lane_right"):
+                continue
+            if pts3_tmp is None:
+                continue
+            items_tmp = pts3_tmp if isinstance(pts3_tmp, list) else [pts3_tmp]
+            for idx_poly, poly_tmp in enumerate(items_tmp):
+                if poly_tmp is None or len(poly_tmp) == 0:
+                    continue
+                arr = np.asarray(poly_tmp)
+                if arr.ndim != 2 or len(arr) == 0:
+                    continue
+                y_mean = arr[:, 1].mean()  # world y 좌표
+                dist = abs(y_mean - 0.0)  # y=0에 가까운지
+                if best_cam_dist is None or dist < best_cam_dist:
+                    best_cam_dist = dist
+                    central_cam_key = name_tmp
+                    central_cam_index = idx_poly
+
         for name, pts3 in world_pts.items():
             if pts3 is None:
                 continue
@@ -340,8 +423,10 @@ def show_bev_viewer(
             # OSM 맵의 경우 리스트 형태일 수 있음
             if isinstance(pts3, list):
                 # 리스트의 각 polyline을 개별적으로 처리
-                label_set = False
-                for polyline in pts3:
+                label_set_center = False
+                label_set_left = False
+                label_set_right = False
+                for poly_idx, polyline in enumerate(pts3):
                     if polyline is None or len(polyline) == 0:
                         continue
                     try:
@@ -350,10 +435,43 @@ def show_bev_viewer(
                             uv, _ = project_pinhole(polyline_array, T_cam_world, K)
                             if uv.shape[0] == 0:
                                 continue
-                            col = CAM_COLORS.get(name, "gray")
-                            if not label_set:
-                                sc = ax_cam.scatter(uv[:, 0], uv[:, 1], s=6, color=col, label=name)
-                                label_set = True
+                            
+                            y_mean = polyline_array[:, 1].mean()  # world y 좌표
+                            
+                            # 이 polyline이 '가장 가운데' 중앙선인지 여부
+                            is_central = (name == central_cam_key and poly_idx == central_cam_index)
+                            
+                            # 색상 결정: 중앙선은 검정, 그 위는 노란색, 아래는 하늘색
+                            if is_central:
+                                col = "black"
+                                label_name = "lane_center"
+                                use_label = not label_set_center
+                                label_set_center = True
+                            elif y_mean > 0:
+                                # 중앙선 위쪽 (y > 0, 화면 상단)
+                                col = "gold"
+                                label_name = "lane_left"
+                                use_label = not label_set_left
+                                label_set_left = True
+                            else:
+                                # 중앙선 아래쪽 (y < 0, 화면 하단)
+                                col = "deepskyblue"
+                                label_name = "lane_right"
+                                use_label = not label_set_right
+                                label_set_right = True
+                            
+                            if name == "stop_line":
+                                col = "red"
+                                label_name = "stop_line"
+                                use_label = True
+                            elif name == "car_box":
+                                col = "lime"
+                                label_name = "car_box"
+                                use_label = True
+                            
+                            # 범례 등록
+                            if use_label and name in ("lane_left", "lane_center", "lane_right", "stop_line", "car_box"):
+                                sc = ax_cam.scatter(uv[:, 0], uv[:, 1], s=6, color=col, label=label_name)
                             else:
                                 sc = ax_cam.scatter(uv[:, 0], uv[:, 1], s=6, color=col)
                             cam_artists.append(sc)
@@ -367,8 +485,36 @@ def show_bev_viewer(
                         uv, _ = project_pinhole(pts3_array, T_cam_world, K)
                         if uv.shape[0] == 0:
                             continue
-                        col = CAM_COLORS.get(name, "gray")
-                        sc = ax_cam.scatter(uv[:, 0], uv[:, 1], s=6, color=col, label=name)
+                        
+                        y_mean = pts3_array[:, 1].mean()  # world y 좌표
+                        
+                        # 이 polyline이 '가장 가운데' 중앙선인지 여부
+                        is_central = (name == central_cam_key and 0 == central_cam_index)
+                        
+                        # 색상 결정: 중앙선은 검정, 그 위는 노란색, 아래는 하늘색
+                        if is_central:
+                            col = "black"
+                            label_name = "lane_center"
+                        elif y_mean > 0:
+                            # 중앙선 위쪽 (y > 0)
+                            col = "gold"
+                            label_name = "lane_left"
+                        else:
+                            # 중앙선 아래쪽 (y < 0)
+                            col = "deepskyblue"
+                            label_name = "lane_right"
+                        
+                        if name == "stop_line":
+                            col = "red"
+                            label_name = "stop_line"
+                        elif name == "car_box":
+                            col = "lime"
+                            label_name = "car_box"
+                        elif name not in ("lane_left", "lane_center", "lane_right"):
+                            col = "gray"
+                            label_name = name
+                        
+                        sc = ax_cam.scatter(uv[:, 0], uv[:, 1], s=6, color=col, label=label_name)
                         cam_artists.append(sc)
                 except Exception:
                     continue

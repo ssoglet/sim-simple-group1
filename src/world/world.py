@@ -160,36 +160,52 @@ def make_pangyo_world_pts(
 
     # ---------------------------------------
     # 2) E-W 도로 차선들 (진행방향: x)
-    #   - 위쪽(+y) : 동쪽(+x) 진행(가정)
-    #   - 아래쪽(-y): 서쪽(-x) 진행(가정)
+    #   - 위쪽(+y) : 동쪽(+x) 진행(가정) - 노란색 left 2줄
+    #   - 아래쪽(-y): 서쪽(-x) 진행(가정) - 하늘색 right 2줄
     # ---------------------------------------
-    # 차선 center offset: (0.5, 1.5, ...) * lane_width 형태로 배치
+    # 차선 center offset: (0.5, 1.5) * lane_width 형태로 배치 (2줄)
     offsets_one_side = (np.arange(lanes_each_dir) + 0.5) * lane_width  # 1차선,2차선...
 
-    # +y측 차선들 (y = +offset)
+    # +y측 차선들 (y = +offset) - 노란색 left 2줄
     for off in offsets_one_side:
         c = _make_straight_polyline("x", -area_half, area_half, +off)
-        lane_center.append(c)
+        # lane_center에 추가하지 않고, lane_left에만 추가 (노란색으로 표시)
         lane_left.append(_offset_boundary(c, np.array([0.0, 1.0]), +lane_width/2))
-        lane_right.append(_offset_boundary(c, np.array([0.0, 1.0]), -lane_width/2))
+        lane_left.append(_offset_boundary(c, np.array([0.0, 1.0]), -lane_width/2))
 
-    # -y측 차선들 (y = -offset)
+    # -y측 차선들 (y = -offset) - 하늘색 right 2줄
     for off in offsets_one_side:
         c = _make_straight_polyline("x", -area_half, area_half, -off)
-        lane_center.append(c)
-        lane_left.append(_offset_boundary(c, np.array([0.0, 1.0]), +lane_width/2))
+        # lane_center에 추가하지 않고, lane_right에만 추가 (하늘색으로 표시)
+        lane_right.append(_offset_boundary(c, np.array([0.0, 1.0]), +lane_width/2))
         lane_right.append(_offset_boundary(c, np.array([0.0, 1.0]), -lane_width/2))
+
+    # E-W 도로의 정확한 중앙선 (y = 0) - 검정색 1줄만
+    main_center_ew = _make_straight_polyline("x", -area_half, area_half, 0.0)
+    lane_center.append(main_center_ew)
 
     # ---------------------------------------
     # 3) N-S 도로 차선들 (진행방향: y)
     #   - 오른쪽(+x): 북쪽(+y) 진행(가정)
     #   - 왼쪽(-x)  : 남쪽(-y) 진행(가정)
     # ---------------------------------------
+    # +x측 차선들 (x = +offset)
     for off in offsets_one_side:
         c = _make_straight_polyline("y", -area_half, area_half, +off)
+        lane_center.append(c)
+        lane_left.append(_offset_boundary(c, np.array([-1.0, 0.0]), +lane_width/2))
+        lane_right.append(_offset_boundary(c, np.array([-1.0, 0.0]), -lane_width/2))
 
+    # -x측 차선들 (x = -offset)
     for off in offsets_one_side:
         c = _make_straight_polyline("y", -area_half, area_half, -off)
+        lane_center.append(c)
+        lane_left.append(_offset_boundary(c, np.array([-1.0, 0.0]), +lane_width/2))
+        lane_right.append(_offset_boundary(c, np.array([-1.0, 0.0]), -lane_width/2))
+
+    # N-S 도로의 정확한 중앙선 (x = 0) 추가 - 시각화를 위한 기준선
+    main_center_ns = _make_straight_polyline("y", -area_half, area_half, 0.0)
+    lane_center.append(main_center_ns)
 
     # ---------------------------------------
     # 4) 교차로 내부 회전(가이드) 차선(선택)
