@@ -83,8 +83,6 @@ def make_pangyo_world_pts(
         "lane_left":   List[np.ndarray],
         "lane_right":  List[np.ndarray],
         "car_box":     np.ndarray | None, # (8,3)
-        "crosswalk":   List[np.ndarray],  # (M,3) 닫힌 폴리곤
-        "stop_line":   List[np.ndarray],  # (K,3) 짧은 선분 polyline
       }
     """
 
@@ -142,9 +140,6 @@ def make_pangyo_world_pts(
     lane_center: List[np.ndarray] = []
     lane_left:   List[np.ndarray] = []
     lane_right:  List[np.ndarray] = []
-
-    crosswalk: List[np.ndarray] = []
-    stop_line: List[np.ndarray] = []
 
     # ---------------------------------------
     # 1) 도로 기본 파라미터
@@ -234,62 +229,7 @@ def make_pangyo_world_pts(
         lane_right.append(_offset_boundary(c, np.array([-1.0, 0.0]), -lane_width/2))
 
     # ---------------------------------------
-    # 5) 횡단보도 4개(사각형 폴리곤)
-    # ---------------------------------------
-    # 횡단보도는 교차로 바깥쪽에 위치
-    cw_depth = 6.0  # 진행방향으로의 두께(미터)
-    cw_margin = 2.0 # 교차로 박스에서 살짝 띄우기
-    # 횡단보도 길이(차로 폭 + 여유). "도로를 가로지르는" 방향 길이
-    cw_length = 2.0 * (road_half_width + 4.0)
-
-    # 북쪽 횡단보도(동-서 방향으로 길게, y가 +쪽)
-    crosswalk.append(_make_box_polygon(
-        cx=0.0,
-        cy=intersection_half + cw_margin + cw_depth/2,
-        hx=cw_length/2,
-        hy=cw_depth/2
-    ))
-    # 남쪽
-    crosswalk.append(_make_box_polygon(
-        cx=0.0,
-        cy=-(intersection_half + cw_margin + cw_depth/2),
-        hx=cw_length/2,
-        hy=cw_depth/2
-    ))
-    # 동쪽 횡단보도(남-북 방향으로 길게, x가 +쪽)
-    crosswalk.append(_make_box_polygon(
-        cx=intersection_half + cw_margin + cw_depth/2,
-        cy=0.0,
-        hx=cw_depth/2,
-        hy=cw_length/2
-    ))
-    # 서쪽
-    crosswalk.append(_make_box_polygon(
-        cx=-(intersection_half + cw_margin + cw_depth/2),
-        cy=0.0,
-        hx=cw_depth/2,
-        hy=cw_length/2
-    ))
-
-    # ---------------------------------------
-    # 6) 정지선(각 접근로에 1개씩)
-    # ---------------------------------------
-    stop_len = 2.0 * (road_half_width + 1.0)
-    # 서쪽 접근(세로 정지선): x = -intersection_half - margin
-    x_sl = -intersection_half - 1.5
-    stop_line.append(np.array([[x_sl, -stop_len/2, z0], [x_sl, +stop_len/2, z0]]))
-    # 동쪽
-    x_sl = +intersection_half + 1.5
-    stop_line.append(np.array([[x_sl, -stop_len/2, z0], [x_sl, +stop_len/2, z0]]))
-    # 남쪽 접근(가로 정지선): y = -intersection_half - margin
-    y_sl = -intersection_half - 1.5
-    stop_line.append(np.array([[-stop_len/2, y_sl, z0], [+stop_len/2, y_sl, z0]]))
-    # 북쪽
-    y_sl = +intersection_half + 1.5
-    stop_line.append(np.array([[-stop_len/2, y_sl, z0], [+stop_len/2, y_sl, z0]]))
-
-    # ---------------------------------------
-    # 7) 선행차(예: 동쪽에서 서쪽으로 가는 차 1대)
+    # 5) 선행차(예: 동쪽에서 서쪽으로 가는 차 1대)
     # ---------------------------------------
     # 교차로 중심 근처에 배치하여 테스트하기 쉽게
     L, W, H = 4.5, 1.6, 1.5
@@ -308,6 +248,4 @@ def make_pangyo_world_pts(
         "lane_left": lane_left,
         "lane_right": lane_right,
         "car_box": car_box,
-        "crosswalk": crosswalk,
-        "stop_line": stop_line,
     }
