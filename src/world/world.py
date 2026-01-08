@@ -68,7 +68,7 @@ def make_pangyo_world_pts(
     lanes_each_dir: int = 2,           # 한 방향 차로 수 (예: 2면 왕복 4차로)
     sample_step: float = 0.5,          # 직선 샘플링 간격(미터)
     z0: float = 0.0,
-    add_turn_guides: bool = True,      # 좌/우회전 가이드(곡선) centerline 추가
+    add_turn_guides: bool = False,      # 좌/우회전 가이드(곡선) centerline 추가
 ) -> Dict[str, object]:
     """
     4-way 교차로(판교 느낌) 월드 포인트를 생성.
@@ -156,10 +156,10 @@ def make_pangyo_world_pts(
 
     # 직선 구간: 교차로 중심부는 비우고 approach만 생성
     # 예) 서쪽 접근: x in [-area_half, -intersection_half], 동쪽 접근: [intersection_half, area_half]
-    x_w0, x_w1 = -area_half, -intersection_half
-    x_e0, x_e1 =  intersection_half,  area_half
-    y_s0, y_s1 = -area_half, -intersection_half
-    y_n0, y_n1 =  intersection_half,  area_half
+    x_w0, x_w1 = -area_half, area_half
+    x_e0, x_e1 = -area_half, area_half
+    y_s0, y_s1 = -area_half, area_half
+    y_n0, y_n1 = -area_half, area_half
 
     # ---------------------------------------
     # 2) E-W 도로 차선들 (진행방향: x)
@@ -171,30 +171,17 @@ def make_pangyo_world_pts(
 
     # +y측 차선들 (y = +offset)
     for off in offsets_one_side:
-        # 서쪽 접근 + 동쪽 접근을 각각 polyline으로 만들고 둘 다 lane으로 넣음
-        c_w = _make_straight_polyline("x", x_w0, x_w1, +off)
-        c_e = _make_straight_polyline("x", x_e0, x_e1, +off)
-
-        for c in (c_w, c_e):
-            lane_center.append(c)
-            # 진행방향 x인 lane의 left/right boundary는 +/- y
-            # 여기서 "left"는 polyline의 좌측(북쪽)으로 정의(일관성만 유지)
-            l = _offset_boundary(c, normal_xy=np.array([0.0, 1.0]), dist=+lane_width/2)
-            r = _offset_boundary(c, normal_xy=np.array([0.0, 1.0]), dist=-lane_width/2)
-            lane_left.append(l)
-            lane_right.append(r)
+        c = _make_straight_polyline("x", -area_half, area_half, +off)
+        lane_center.append(c)
+        lane_left.append(_offset_boundary(c, np.array([0.0, 1.0]), +lane_width/2))
+        lane_right.append(_offset_boundary(c, np.array([0.0, 1.0]), -lane_width/2))
 
     # -y측 차선들 (y = -offset)
     for off in offsets_one_side:
-        c_w = _make_straight_polyline("x", x_w0, x_w1, -off)
-        c_e = _make_straight_polyline("x", x_e0, x_e1, -off)
-
-        for c in (c_w, c_e):
-            lane_center.append(c)
-            l = _offset_boundary(c, normal_xy=np.array([0.0, 1.0]), dist=+lane_width/2)
-            r = _offset_boundary(c, normal_xy=np.array([0.0, 1.0]), dist=-lane_width/2)
-            lane_left.append(l)
-            lane_right.append(r)
+        c = _make_straight_polyline("x", -area_half, area_half, -off)
+        lane_center.append(c)
+        lane_left.append(_offset_boundary(c, np.array([0.0, 1.0]), +lane_width/2))
+        lane_right.append(_offset_boundary(c, np.array([0.0, 1.0]), -lane_width/2))
 
     # ---------------------------------------
     # 3) N-S 도로 차선들 (진행방향: y)
@@ -202,29 +189,10 @@ def make_pangyo_world_pts(
     #   - 왼쪽(-x)  : 남쪽(-y) 진행(가정)
     # ---------------------------------------
     for off in offsets_one_side:
-        # +x 측 차선들 (x=+off)
-        c_s = _make_straight_polyline("y", y_s0, y_s1, +off)
-        c_n = _make_straight_polyline("y", y_n0, y_n1, +off)
-
-        for c in (c_s, c_n):
-            lane_center.append(c)
-            # 진행방향 y인 lane의 left/right boundary는 +/- x
-            l = _offset_boundary(c, normal_xy=np.array([1.0, 0.0]), dist=+lane_width/2)
-            r = _offset_boundary(c, normal_xy=np.array([1.0, 0.0]), dist=-lane_width/2)
-            lane_left.append(l)
-            lane_right.append(r)
+        c = _make_straight_polyline("y", -area_half, area_half, +off)
 
     for off in offsets_one_side:
-        # -x 측 차선들 (x=-off)
-        c_s = _make_straight_polyline("y", y_s0, y_s1, -off)
-        c_n = _make_straight_polyline("y", y_n0, y_n1, -off)
-
-        for c in (c_s, c_n):
-            lane_center.append(c)
-            l = _offset_boundary(c, normal_xy=np.array([1.0, 0.0]), dist=+lane_width/2)
-            r = _offset_boundary(c, normal_xy=np.array([1.0, 0.0]), dist=-lane_width/2)
-            lane_left.append(l)
-            lane_right.append(r)
+        c = _make_straight_polyline("y", -area_half, area_half, -off)
 
     # ---------------------------------------
     # 4) 교차로 내부 회전(가이드) 차선(선택)
