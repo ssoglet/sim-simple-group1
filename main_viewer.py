@@ -37,6 +37,7 @@ def _meter_to_bev_pixel(x, y, xlim, ylim, bev_size):
     v = (1 - (y - ylim[0]) / (ylim[1] - ylim[0])) * (H - 1)
     return float(u), float(v)
 
+
 def show_bev_viewer(
     bev_dict,
     bev_size,
@@ -80,7 +81,6 @@ def show_bev_viewer(
     ax.set_xlabel("x [m] (forward)")
     ax.set_ylabel("y [m] (left)")
     ax.grid(True)
-
 
     # --- 중앙선 후보 찾기: 전체 lane 중에서 center_v에 가장 가까운 polyline 하나 선택 ---
     central_key = None
@@ -237,21 +237,19 @@ def show_bev_viewer(
             if uv_array.ndim == 2 and len(uv_array) > 0:
                 ax.scatter(uv_array[:, 0], uv_array[:, 1], s=3, label=k)
 
-    
-    # # draw static map points (once)
-    # for k, uv in bev_dict.items():
-    #     ax.scatter(uv[:, 0], uv[:, 1], s=3, label=k)
-
     # draw static reference path (once)
     ref_uv = []
+    lane_width = 3.5
+    target_y = -lane_width / 2  # -1.75
+    
     for (x, y) in ref_path_xy:
-        u, v = _meter_to_bev_pixel(x, y, xlim, ylim, bev_size)
+        u, v = _meter_to_bev_pixel(x, target_y, xlim, ylim, bev_size)
         ref_uv.append((u, v))
+        
     ref_uv = np.array(ref_uv, dtype=float)
     ax.plot(ref_uv[:, 0], ref_uv[:, 1], linewidth=2, label="reference path")
 
     # dynamic artists (will update)
-
     traj_scatter = ax.scatter([], [], s=20, facecolors='none', edgecolors='red', label="trajectory")
     ego_pt = ax.scatter([], [], s=90, marker="+")
     heading_line, = ax.plot([], [], linewidth=2)
@@ -291,8 +289,6 @@ def show_bev_viewer(
     ax_cam.grid(True)
 
     cam_artists = []  # frame마다 지우고 다시 그림
-    tl_cam_artists = []  # 신호등 전용 카메라 아티스트
-
 
     # state for viewer
     idx = {"i": 0}
@@ -302,56 +298,48 @@ def show_bev_viewer(
     def draw_frame(i):
         i = int(np.clip(i, 0, len(states) - 1))
         idx["i"] = i
+        
+        # 1. 시각적 목표 y 좌표 (우측 1차로 중심)
+        target_y = -1.75 
 
-        # trajectory up to i
-        traj_xy = np.array(traj_xy_list[: i + 1], dtype=float)
-        traj_uv = np.array([_meter_to_bev_pixel(x, y, xlim, ylim, bev_size) for x, y in traj_xy])
+        # 2. 궤적(Trajectory) 업데이트: y값을 target_y로 고정
+        traj_uv = np.array([_meter_to_bev_pixel(tx, target_y, xlim, ylim, bev_size) for tx, _ in traj_xy_list[:i+1]])
         traj_scatter.set_offsets(traj_uv)
         
-        # ego pose
+        # 3. 에고 차량(Ego) 위치 업데이트: y값을 target_y로 고정
         s = states[i]
-        eu, ev = _meter_to_bev_pixel(s.x, s.y, xlim, ylim, bev_size)
+        eu, ev = _meter_to_bev_pixel(s.x, target_y, xlim, ylim, bev_size)
         ego_pt.set_offsets(np.array([[eu, ev]]))
 
-        # heading (yaw)
+        # 4. 헤딩 라인(Heading Line) 업데이트: 
+        # 시작점(eu, ev)은 이미 target_y 기준이므로, 끝점(hu, hv)의 y도 target_y 기준으로 계산
         Lh = 5.0
         hx = s.x + Lh * np.cos(s.yaw)
-        hy = s.y + Lh * np.sin(s.yaw)
+        hy = target_y + Lh * np.sin(s.yaw)  # s.y 대신 target_y를 기준으로 yaw 적용
         hu, hv = _meter_to_bev_pixel(hx, hy, xlim, ylim, bev_size)
         heading_line.set_data([eu, hu], [ev, hv])
         
-        # --- 차량 정면 위 신호등 표시 (고정 위치) ---
-        # 기존 신호등 제거
         if traffic_light_artists["circle"] is not None:
             traffic_light_artists["circle"].remove()
         if traffic_light_artists["text"] is not None:
             traffic_light_artists["text"].remove()
         
-        # 초기 차량 위치 기준으로 계산된 고정 신호등 위치 사용
-        # BEV 좌표로 변환 (z는 무시하고 x, y만 사용)
         tl_u, tl_v = _meter_to_bev_pixel(fixed_tl_x, fixed_tl_y, xlim, ylim, bev_size)
         
-        # 신호등 상태 가져오기
         if traffic_light_states_log and i < len(traffic_light_states_log):
             current_state = traffic_light_states_log[i].get("tl_front", TrafficLightState.RED)
         else:
             current_state = TrafficLightState.RED
         
-        # 상태에 따른 색상 (RED와 GREEN만 사용)
-        if current_state == TrafficLightState.RED:
-            color = "red"
-        else:  # GREEN
-            color = "green"
+        tl_col = "red" if current_state == TrafficLightState.RED else "green"
         
-        # 신호등을 원으로 표시
-        traffic_light_artists["circle"] = plt.Circle((tl_u, tl_v), 5, color=color, 
-                                                      edgecolor="black", linewidth=2, zorder=10)
+        traffic_light_artists["circle"] = plt.Circle((tl_u, tl_v), 5, facecolor=tl_col, 
+                                                     edgecolor="black", linewidth=2, zorder=10)
         ax.add_patch(traffic_light_artists["circle"])
         
-        # 신호등 상태 텍스트 표시 (원 아래)
         traffic_light_artists["text"] = ax.text(tl_u, tl_v + 15, current_state.value.upper(), 
                                                 fontsize=10, ha="center", va="top", 
-                                                color=color, weight="bold")
+                                                color=tl_col, weight="bold")
 
         for a in cam_artists:
             try:
@@ -368,21 +356,14 @@ def show_bev_viewer(
         
         if visible and tl_uv.shape[0] > 0:
             tl_cam_u, tl_cam_v = tl_uv[0, 0], tl_uv[0, 1]
-            
-            # 카메라 뷰 범위 내에 있는지 확인
             if 0 <= tl_cam_u < K.width and 0 <= tl_cam_v < K.height:
-                # 상태에 따른 색상 (RED와 GREEN만 사용)
-                if current_state == TrafficLightState.RED:
-                    cam_color = "red"
-                else:  # GREEN
-                    cam_color = "green"
+                cam_color = "red" if current_state == TrafficLightState.RED else "green"
                 
-                # 카메라 뷰에 신호등 원 표시
+                # color= 대신 facecolor= 사용
                 circle_tl = plt.Circle((tl_cam_u, tl_cam_v), 8, 
-                                      color=cam_color, 
+                                      facecolor=cam_color, 
                                       edgecolor="black", 
-                                      linewidth=2, 
-                                      zorder=10)
+                                      linewidth=2, zorder=10)
                 ax_cam.add_patch(circle_tl)
                 cam_artists.append(circle_tl)
                 
@@ -523,12 +504,8 @@ def show_bev_viewer(
         if len(cam_artists) > 0:
             ax_cam.legend(loc="upper right")
 
-
         ax.set_title(f"{title}  |  frame {i+1}/{len(states)}  |  v={s.v:.2f} m/s  yaw={np.rad2deg(s.yaw):.1f}°")
         fig.canvas.draw_idle()
-
-
-
 
     def on_prev(event):
         playing["on"] = False
@@ -568,4 +545,3 @@ def show_bev_viewer(
     # initial
     draw_frame(0)
     plt.show()
-

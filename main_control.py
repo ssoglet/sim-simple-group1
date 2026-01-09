@@ -161,7 +161,7 @@ def main():
         state = VehicleState(x=-400.0, y=0.0, yaw=np.deg2rad(0.0), v=0.0)
     elif map_type == "pangyo":
         # 교차로 중심(0,0) 근처에서 시작: 서쪽으로 25m 앞, 오른쪽 차선
-        state = VehicleState(x=-30.0, y=-1.75, yaw=np.deg2rad(0.0), v=0.0)
+        state = VehicleState(x=-25.0, y=-1.75, yaw=np.deg2rad(0.0), v=0.0)
     else:
         state = VehicleState(x=0.0, y=-1.0, yaw=np.deg2rad(0.0), v=0.0)
     

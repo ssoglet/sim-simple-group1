@@ -260,10 +260,10 @@ def make_pangyo_world_pts(
     # 6) 선행차(예: 동쪽에서 서쪽으로 가는 차 1대)
     # ---------------------------------------
     # 교차로 중심 근처에 배치하여 테스트하기 쉽게
-    L, W, H = 4.5, 1.6, 1.5
-    lane_center_offset = 0.5 * lane_width
-    car_center_y = -lane_center_offset + (lane_width - W) / 2
-    car_center = np.array([+15.0, car_center_y, z0], dtype=float)
+    L, W, H = 4.5, 2.8, 1.5  # 차 크기
+    car_center_y = -lane_width * 0.5 
+    car_center = np.array([10.0, car_center_y, z0], dtype=float)
+    
     box = []
     for dz in [0.0, H]:
         for dx in [-L/2, L/2]:
