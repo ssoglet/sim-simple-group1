@@ -237,15 +237,27 @@ def show_bev_viewer(
             if uv_array.ndim == 2 and len(uv_array) > 0:
                 ax.scatter(uv_array[:, 0], uv_array[:, 1], s=3, label=k)
 
-    # draw static reference path (once)
-    ref_uv = []
+    # draw static reference path (lane change)
     lane_width = 3.5
-    target_y = -lane_width / 2  # -1.75
-    
-    for (x, y) in ref_path_xy:
-        u, v = _meter_to_bev_pixel(x, target_y, xlim, ylim, bev_size)
-        ref_uv.append((u, v))
+
+    right_lane_1_y = -lane_width * 0.5   # 도착
+    right_lane_2_y = -lane_width * 1.5   # 시작
+
+    # x 기준 보간 범위
+    x_start = ref_path_xy[0][0]
+    x_end   = ref_path_xy[-1][0]
+
+    ref_uv = []
+    for (x, _) in ref_path_xy:
+        # x 위치에 따른 0~1 보간 계수
+        t = (x - x_start) / (x_end - x_start + 1e-6)
         
+        # y를 선형으로 이동 (2차선 → 1차선)
+        y = (1 - t) * right_lane_2_y + t * right_lane_1_y
+        
+        u, v = _meter_to_bev_pixel(x, y, xlim, ylim, bev_size)
+        ref_uv.append((u, v))
+
     ref_uv = np.array(ref_uv, dtype=float)
     ax.plot(ref_uv[:, 0], ref_uv[:, 1], linewidth=2, label="reference path")
 
@@ -298,27 +310,35 @@ def show_bev_viewer(
     def draw_frame(i):
         i = int(np.clip(i, 0, len(states) - 1))
         idx["i"] = i
-        
-        # 1. 시각적 목표 y 좌표 (우측 1차로 중심)
-        target_y = -1.75 
+        s = states[i] 
 
-        # 2. 궤적(Trajectory) 업데이트: y값을 target_y로 고정
-        traj_uv = np.array([_meter_to_bev_pixel(tx, target_y, xlim, ylim, bev_size) for tx, _ in traj_xy_list[:i+1]])
-        traj_scatter.set_offsets(traj_uv)
+        # 1. 궤적(Trajectory) 업데이트: ty에 -1을 곱하여 y=0 대칭 반전
+        traj_uv = []
+        for tx, ty in traj_xy_list[:i+1]:
+            # ty -> -ty로 변경하여 상하 반전
+            u, v = _meter_to_bev_pixel(tx, -ty, xlim, ylim, bev_size)
+            traj_uv.append([u, v])
         
-        # 3. 에고 차량(Ego) 위치 업데이트: y값을 target_y로 고정
-        s = states[i]
-        eu, ev = _meter_to_bev_pixel(s.x, target_y, xlim, ylim, bev_size)
+        if len(traj_uv) > 0:
+            traj_scatter.set_offsets(np.array(traj_uv))
+        
+        # 2. 에고 차량(Ego) 위치 업데이트: s.y에 -1을 곱하여 반전
+        # 차량의 실제 y가 아닌 반전된 위치(-s.y)를 시각화
+        eu, ev = _meter_to_bev_pixel(s.x, -s.y, xlim, ylim, bev_size)
         ego_pt.set_offsets(np.array([[eu, ev]]))
 
-        # 4. 헤딩 라인(Heading Line) 업데이트: 
-        # 시작점(eu, ev)은 이미 target_y 기준이므로, 끝점(hu, hv)의 y도 target_y 기준으로 계산
+        # 3. 헤딩 라인(Heading Line) 업데이트
+        # 위치(-s.y)와 방향(-s.yaw) 모두 반전시켜야 헤딩 라인이 경로를 따라갑니다.
         Lh = 5.0
-        hx = s.x + Lh * np.cos(s.yaw)
-        hy = target_y + Lh * np.sin(s.yaw)  # s.y 대신 target_y를 기준으로 yaw 적용
+        rev_y = -s.y
+        rev_yaw = -s.yaw
+        
+        hx = s.x + Lh * np.cos(rev_yaw)
+        hy = rev_y + Lh * np.sin(rev_yaw) 
         hu, hv = _meter_to_bev_pixel(hx, hy, xlim, ylim, bev_size)
         heading_line.set_data([eu, hu], [ev, hv])
-        
+
+        # 4. 신호등 표시 로직 (기존 변수 traffic_light_artists 유지)
         if traffic_light_artists["circle"] is not None:
             traffic_light_artists["circle"].remove()
         if traffic_light_artists["text"] is not None:
@@ -341,14 +361,16 @@ def show_bev_viewer(
                                                 fontsize=10, ha="center", va="top", 
                                                 color=tl_col, weight="bold")
 
+        # 5. 카메라 뷰 업데이트 (이 부분에서 에러가 나면 Play가 멈춤)
         for a in cam_artists:
-            try:
-                a.remove()
-            except Exception:
-                pass
+            try: a.remove()
+            except: pass
         cam_artists.clear()
 
+        # 실제 차량 상태 s를 사용하여 카메라 행렬 생성
         T_cam_world = make_T_cam_world() @ make_T_vehicle_world(s)
+        
+        # (이후 기존의 world_pts 순회 및 project_pinhole 로직...)
         
         # 신호등 3D 위치를 카메라로 프로젝션
         tl_3d = np.array([[fixed_tl_x, fixed_tl_y, fixed_tl_z]], dtype=float)
